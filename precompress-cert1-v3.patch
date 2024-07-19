@@ -1,90 +1,77 @@
 diff --git a/src/event/ngx_event_openssl.c b/src/event/ngx_event_openssl.c
+index 7b55d4a..e3d8d2b 100644
 --- a/src/event/ngx_event_openssl.c
 +++ b/src/event/ngx_event_openssl.c
 @@ -847,6 +847,50 @@ ngx_ssl_password_callback(char *buf, int
- 
- ngx_int_t
- ngx_ssl_certificate_compression(ngx_conf_t *cf, ngx_ssl_t *ssl,
--    ngx_uint_t enable)
-+    ngx_uint_t enable, size_t max_uncompressed_size, size_t max_memory_per_conn)
- {
-     if (!enable) {
-         return NGX_OK;
-     }
-
- #ifdef TLSEXT_comp_cert_none
-
-     // Set limits on maximum uncompressed size and memory usage per connection
-     if (max_uncompressed_size == NGX_CONF_UNSET_SIZE) {
-         max_uncompressed_size = 16 * 1024 * 1024; // Default 16 MB
-     }
-
-     if (max_memory_per_conn == NGX_CONF_UNSET_SIZE) {
-         max_memory_per_conn = 16 * 1024 * 1024; // Default 16 MB
-     }
-
-     if (max_uncompressed_size <= 0 || max_uncompressed_size > 16 * 1024 * 1024) {
-         ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
-                       "Invalid \"max_uncompressed_size\" value, must be between 1 and 16 MB");
-         return NGX_ERROR;
-     }
-
-     if (max_memory_per_conn <= 0 || max_memory_per_conn > 16 * 1024 * 1024) {
-         ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
-                       "Invalid \"max_memory_per_conn\" value, must be between 1 and 16 MB");
-         return NGX_ERROR;
-     }
-
-     if (SSL_CTX_set_max_cert_list(ssl->ctx, max_uncompressed_size) != 1) {
-         ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
-                       "Failed to set max certificate list size");
-         return NGX_ERROR;
-     }
-
-     if (SSL_CTX_set_max_cert_memory(ssl->ctx, max_memory_per_conn) != 1) {
-         ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
-                       "Failed to set max certificate memory per connection");
-         return NGX_ERROR;
-     }
-
-     if (SSL_CTX_compress_certs(ssl->ctx, 0)) {
-         ngx_log_error(NGX_LOG_INFO, ssl->log, 0,
-                       "SSL certificate compression enabled, max uncompressed size: %uz, max memory per connection: %uz",
-                       max_uncompressed_size, max_memory_per_conn);
-         return NGX_OK;
-     }
-
- #endif
-
-     ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
-                   "\"ssl_certificate_compression\" ignored, not supported");
-
-     return NGX_ERROR;
+     return NGX_OK;
  }
 
++ngx_int_t
++ngx_ssl_certificate_compression(ngx_conf_t *cf, ngx_ssl_t *ssl,
++    ngx_uint_t enable, size_t max_uncompressed_size, size_t max_memory_per_conn)
++{
++    if (!enable) {
++        return NGX_OK;
++    }
++
++#ifdef TLSEXT_comp_cert_none
++
++    // Set limits on maximum uncompressed size and memory usage per connection
++    if (max_uncompressed_size > 0 && max_uncompressed_size <= 16 * 1024 * 1024) {
++        SSL_CTX_set_max_cert_list(ssl->ctx, max_uncompressed_size);
++    } else {
++        ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
++                      "Invalid \"max_uncompressed_size\" value, must be between 1 and 16 MB");
++        return NGX_ERROR;
++    }
++
++    if (max_memory_per_conn > 0 && max_memory_per_conn <= 16 * 1024 * 1024) {
++        SSL_CTX_set_max_cert_memory(ssl->ctx, max_memory_per_conn);
++    } else {
++        ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
++                      "Invalid \"max_memory_per_conn\" value, must be between 1 and 16 MB");
++        return NGX_ERROR;
++    }
++
++    if (SSL_CTX_compress_certs(ssl->ctx, 0)) {
++        ngx_log_error(NGX_LOG_INFO, ssl->log, 0,
++                      "SSL certificate compression enabled, max uncompressed size: %uz, max memory per connection: %uz",
++                      max_uncompressed_size, max_memory_per_conn);
++        return NGX_OK;
++    }
++
++#endif
++
++    ngx_log_error(NGX_LOG_WARN, ssl->log, 0,
++                  "\"ssl_certificate_compression\" ignored, not supported");
++
++    return NGX_ERROR;
++}
++
  ngx_int_t
  ngx_ssl_ciphers(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *ciphers,
      ngx_uint_t prefer_server_ciphers)
- {
 diff --git a/src/event/ngx_event_openssl.h b/src/event/ngx_event_openssl.h
+index 8a4c4b1..f7a2d5d 100644
 --- a/src/event/ngx_event_openssl.h
 +++ b/src/event/ngx_event_openssl.h
 @@ -189,6 +189,8 @@ ngx_int_t ngx_ssl_certificate(ngx_conf_t
      ngx_str_t *cert, ngx_str_t *key, ngx_array_t *passwords);
  ngx_int_t ngx_ssl_connection_certificate(ngx_connection_t *c, ngx_pool_t *pool,
      ngx_str_t *cert, ngx_str_t *key, ngx_array_t *passwords);
- ngx_int_t ngx_ssl_certificate_compression(ngx_conf_t *cf, ngx_ssl_t *ssl,
-     ngx_uint_t enable, size_t max_uncompressed_size, size_t max_memory_per_conn);
++ngx_int_t ngx_ssl_certificate_compression(ngx_conf_t *cf, ngx_ssl_t *ssl,
++    ngx_uint_t enable, size_t max_uncompressed_size, size_t max_memory_per_conn);
 
  ngx_int_t ngx_ssl_ciphers(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *ciphers,
      ngx_uint_t prefer_server_ciphers);
 diff --git a/src/http/modules/ngx_http_ssl_module.c b/src/http/modules/ngx_http_ssl_module.c
+index 33e8d13..4d8e5d6 100644
 --- a/src/http/modules/ngx_http_ssl_module.c
 +++ b/src/http/modules/ngx_http_ssl_module.c
 @@ -121,6 +121,20 @@ static ngx_command_t  ngx_http_ssl_comma
        0,
        NULL },
- 
+
 +    { ngx_string("ssl_certificate_compression"),
 +      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
 +      ngx_conf_set_flag_slot,
@@ -102,13 +89,13 @@ diff --git a/src/http/modules/ngx_http_ssl_module.c b/src/http/modules/ngx_http_
      { ngx_string("ssl_certificate_compression_max_memory_per_conn"),
        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
        ngx_conf_set_size_slot,
-@@ -581,6 +597,9 @@ ngx_http_ssl_create_srv_conf(ngx_conf_t 
- 
+@@ -581,6 +597,9 @@ ngx_http_ssl_create_srv_conf(ngx_conf_t
+
      sscf->enable = NGX_CONF_UNSET;
      sscf->prefer_server_ciphers = NGX_CONF_UNSET;
-     sscf->certificate_compression = NGX_CONF_UNSET;
-     sscf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
-     sscf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
++    sscf->certificate_compression = NGX_CONF_UNSET;
++    sscf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
++    sscf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
      sscf->early_data = NGX_CONF_UNSET;
      sscf->reject_handshake = NGX_CONF_UNSET;
      sscf->buffer_size = NGX_CONF_UNSET_SIZE;
@@ -116,52 +103,54 @@ diff --git a/src/http/modules/ngx_http_ssl_module.c b/src/http/modules/ngx_http_
      ngx_conf_merge_value(conf->prefer_server_ciphers,
                           prev->prefer_server_ciphers, 0);
 
-    ngx_conf_merge_value(conf->certificate_compression,
-                         prev->certificate_compression, 0);
-    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
-                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
-    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
-                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
-
++    ngx_conf_merge_value(conf->certificate_compression,
++                         prev->certificate_compression, 0);
++    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
++                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
++    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
++                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
++
      ngx_conf_merge_value(conf->early_data, prev->early_data, 0);
      ngx_conf_merge_value(conf->reject_handshake, prev->reject_handshake, 0);
- 
+
 @@ -791,6 +817,14 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *
          {
              return NGX_CONF_ERROR;
          }
-
-        if (ngx_ssl_certificate_compression(cf, &conf->ssl,
-                                            conf->certificate_compression,
-                                            conf->certificate_compression_max_uncompressed_size,
-                                            conf->certificate_compression_max_memory_per_conn)
-            != NGX_OK)
-        {
-            return NGX_CONF_ERROR;
-        }
++
++        if (ngx_ssl_certificate_compression(cf, &conf->ssl,
++                                            conf->certificate_compression,
++                                            conf->certificate_compression_max_uncompressed_size,
++                                            conf->certificate_compression_max_memory_per_conn)
++            != NGX_OK)
++        {
++            return NGX_CONF_ERROR;
++        }
      }
- 
+
      conf->ssl.buffer_size = conf->buffer_size;
 diff --git a/src/http/modules/ngx_http_ssl_module.h b/src/http/modules/ngx_http_ssl_module.h
+index 03ddc84..0e5c7b5 100644
 --- a/src/http/modules/ngx_http_ssl_module.h
 +++ b/src/http/modules/ngx_http_ssl_module.h
-@@-20,6 +20,9 @@ typedef struct {
+@@ -20,6 +20,9 @@ typedef struct {
      ngx_ssl_t                       ssl;
- 
+
      ngx_flag_t                      prefer_server_ciphers;
-     ngx_flag_t                      certificate_compression;
-    size_t                          certificate_compression_max_uncompressed_size;
-    size_t                          certificate_compression_max_memory_per_conn;
++    ngx_flag_t                      certificate_compression;
++    size_t                          certificate_compression_max_uncompressed_size;
++    size_t                          certificate_compression_max_memory_per_conn;
      ngx_flag_t                      early_data;
      ngx_flag_t                      reject_handshake;
- 
+
 diff --git a/src/mail/ngx_mail_ssl_module.c b/src/mail/ngx_mail_ssl_module.c
+index d184b4b..0835f4c 100644
 --- a/src/mail/ngx_mail_ssl_module.c
 +++ b/src/mail/ngx_mail_ssl_module.c
-@@-111,6 +111,20 @@ static ngx_command_t  ngx_mail_ssl_comma
+@@ -111,6 +111,20 @@ static ngx_command_t  ngx_mail_ssl_comma
        0,
        NULL },
- 
+
 +    { ngx_string("ssl_certificate_compression"),
 +      NGX_MAIL_MAIN_CONF|NGX_MAIL_SRV_CONF|NGX_CONF_FLAG,
 +      ngx_conf_set_flag_slot,
@@ -182,61 +171,63 @@ diff --git a/src/mail/ngx_mail_ssl_module.c b/src/mail/ngx_mail_ssl_module.c
 @@ -329,6 +349,9 @@ ngx_mail_ssl_create_conf(ngx_conf_t *cf)
      scf->prefer_server_ciphers = NGX_CONF_UNSET;
      scf->certificate_compression = NGX_CONF_UNSET;
-    scf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
-    scf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
++    scf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
++    scf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
      scf->verify = NGX_CONF_UNSET_UINT;
      scf->verify_depth = NGX_CONF_UNSET_UINT;
      scf->builtin_session_cache = NGX_CONF_UNSET;
-@@-359,6 +383,13 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf, 
+@@ -359,6 +383,13 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf,
      ngx_conf_merge_value(conf->prefer_server_ciphers,
                           prev->prefer_server_ciphers, 0);
 
-    ngx_conf_merge_value(conf->certificate_compression,
-                         prev->certificate_compression, 0);
-    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
-                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
-    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
-                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
-
++    ngx_conf_merge_value(conf->certificate_compression,
++                         prev->certificate_compression, 0);
++    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
++                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
++    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
++                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
++
      ngx_conf_merge_bitmask_value(conf->protocols, prev->protocols,
                           (NGX_CONF_BITMASK_SET
                            |NGX_SSL_TLSv1|NGX_SSL_TLSv1_1
- @@ -467,6 +478,13 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf, 
-          return NGX_CONF_ERROR;
-      }
+@@ -467,6 +478,13 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf,
 
-    if (ngx_ssl_certificate_compression(cf, &conf->ssl,
-                                        conf->certificate_compression,
-                                        conf->certificate_compression_max_uncompressed_size,
-                                        conf->certificate_compression_max_memory_per_conn)
-        != NGX_OK)
-    {
-        return NGX_CONF_ERROR;
-    }
- 
-      if (conf->verify) {
-  
-          if (conf->client_certificate.len == 0 && conf->verify != 3) {
+         return NGX_CONF_ERROR;
+     }
++
++    if (ngx_ssl_certificate_compression(cf, &conf->ssl,
++                                        conf->certificate_compression,
++                                        conf->certificate_compression_max_uncompressed_size,
++                                        conf->certificate_compression_max_memory_per_conn)
++        != NGX_OK)
++    {
++        return NGX_CONF_ERROR;
++    }
+
+     if (conf->verify) {
+
 diff --git a/src/mail/ngx_mail_ssl_module.h b/src/mail/ngx_mail_ssl_module.h
+index 30c16a6..dd27d2b 100644
 --- a/src/mail/ngx_mail_ssl_module.h
 +++ b/src/mail/ngx_mail_ssl_module.h
-@@-22,6 +22,9 @@
+@@ -22,6 +22,9 @@
  typedef struct {
      ngx_flag_t       enable;
      ngx_flag_t       prefer_server_ciphers;
-    ngx_flag_t       certificate_compression;
-    size_t           certificate_compression_max_uncompressed_size;
-    size_t           certificate_compression_max_memory_per_conn;
- 
++    ngx_flag_t       certificate_compression;
++    size_t           certificate_compression_max_uncompressed_size;
++    size_t           certificate_compression_max_memory_per_conn;
+
      ngx_ssl_t        ssl;
- 
+
 diff --git a/src/stream/ngx_stream_ssl_module.c b/src/stream/ngx_stream_ssl_module.c
+index 563e74c..50b4c93 100644
 --- a/src/stream/ngx_stream_ssl_module.c
 +++ b/src/stream/ngx_stream_ssl_module.c
-@@-114,6 +114,20 @@ static ngx_command_t  ngx_stream_ssl_com
+@@ -114,6 +114,20 @@ static ngx_command_t  ngx_stream_ssl_com
        0,
        NULL },
- 
+
 +    { ngx_string("ssl_certificate_compression"),
 +      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_FLAG,
 +      ngx_conf_set_flag_slot,
@@ -254,25 +245,25 @@ diff --git a/src/stream/ngx_stream_ssl_module.c b/src/stream/ngx_stream_ssl_modu
      { ngx_string("ssl_certificate_compression_max_memory_per_conn"),
        NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
        ngx_conf_set_size_slot,
-@@-674,6 +694,9 @@ ngx_stream_ssl_create_conf(ngx_conf_t *c
+@@ -674,6 +694,9 @@ ngx_stream_ssl_create_conf(ngx_conf_t *c
      scf->prefer_server_ciphers = NGX_CONF_UNSET;
      scf->certificate_compression = NGX_CONF_UNSET;
-    scf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
-    scf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
++    scf->certificate_compression_max_uncompressed_size = NGX_CONF_UNSET_SIZE;
++    scf->certificate_compression_max_memory_per_conn = NGX_CONF_UNSET_SIZE;
      scf->verify = NGX_CONF_UNSET_UINT;
      scf->verify_depth = NGX_CONF_UNSET_UINT;
      scf->builtin_session_cache = NGX_CONF_UNSET;
-@@-702,6 +725,13 @@ ngx_stream_ssl_merge_conf(ngx_conf_t *cf
+@@ -702,6 +725,13 @@ ngx_stream_ssl_merge_conf(ngx_conf_t *cf
      ngx_conf_merge_value(conf->prefer_server_ciphers,
                           prev->prefer_server_ciphers, 0);
 
-    ngx_conf_merge_value(conf->certificate_compression,
-                         prev->certificate_compression, 0);
-    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
-                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
-    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
-                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
-
++    ngx_conf_merge_value(conf->certificate_compression,
++                         prev->certificate_compression, 0);
++    ngx_conf_merge_size_value(conf->certificate_compression_max_uncompressed_size,
++                              prev->certificate_compression_max_uncompressed_size, 16 * 1024 * 1024); // Default 16 MB
++    ngx_conf_merge_size_value(conf->certificate_compression_max_memory_per_conn,
++                              prev->certificate_compression_max_memory_per_conn, 16 * 1024 * 1024); // Default 16 MB
++
     if (ngx_ssl_certificate_compression(cf, &conf->ssl,
                                         conf->certificate_compression,
                                         conf->certificate_compression_max_uncompressed_size,
@@ -281,14 +272,16 @@ diff --git a/src/stream/ngx_stream_ssl_module.c b/src/stream/ngx_stream_ssl_modu
     {
         return NGX_CONF_ERROR;
     }
- 
+
 diff --git a/src/stream/ngx_stream_ssl_module.h b/src/stream/ngx_stream_ssl_module.h
+index 45d8b8e..b1f542e 100644
 --- a/src/stream/ngx_stream_ssl_module.h
 +++ b/src/stream/ngx_stream_ssl_module.h
-@@-18,6 +21,9 @@ typedef struct {
+@@ -18,6 +21,9 @@ typedef struct {
      ngx_msec_t       handshake_timeout;
      ngx_flag_t       prefer_server_ciphers;
-    ngx_flag_t       certificate_compression;
-    size_t           certificate_compression_max_uncompressed_size;
-    size_t           certificate_compression_max_memory_per_conn;
++    ngx_flag_t       certificate_compression;
++    size_t           certificate_compression_max_uncompressed_size;
++    size_t           certificate_compression_max_memory_per_conn;
+
      ngx_ssl_t        ssl;

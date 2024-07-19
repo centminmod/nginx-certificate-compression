@@ -33,3 +33,29 @@ Nginx SSL certificate pre-compression patch updated.
    - Default is `16M`.
 
 These directives give administrators the ability to control and limit the resource usage associated with Nginx SSL certificate pre-compression, ensuring that memory and certificate size limits are respected to avoid potential issues with resource exhaustion or performance degradation.
+
+Example
+
+```
+    server {
+        listen 443 ssl;
+        server_name example.com;
+
+        ssl_certificate /etc/ssl/certs/example.com.crt;
+        ssl_certificate_key /etc/ssl/private/example.com.key;
+
+        # Enable SSL certificate compression
+        ssl_certificate_compression on;
+
+        # Set maximum uncompressed size to 8MB
+        ssl_certificate_compression_max_uncompressed_size 8M;
+
+        # Set maximum memory usage per connection to 8MB
+        ssl_certificate_compression_max_memory_per_conn 8M;
+
+        location / {
+            root /var/www/example.com;
+            index index.html;
+        }
+    }
+```
